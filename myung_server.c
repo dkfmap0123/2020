@@ -10,30 +10,58 @@
 #include <wiringPi.h>
 #include <wiringSerial.h>
 
-void *do_unity(void *); //채팅 메세지를 보내는 함수
-void *do_arduino(void *);
-int pushClient(int); //새로운 클라이언트가 접속했을 때 클라이언트 정보 추가
+void *go_unity(void *); //채팅 메세지를 보내는 함수
+void *come_unity(void *); //채팅 메세지를 받는 함수
+void *go_ras(void *); //채팅 메세지를 받는 함수
+void *go_ras2(void *); //채팅 메세지를 받는 함수
+
+int pushClient(int, char*); //새로운 클라이언트가 접속했을 때 클라이언트 정보 추가
 int popClient(int); //클라이언트가 종료했을 때 클라이언트 정보 삭제
-pthread_t thread_unity, thread_arduino;
-pthread_mutex_t mutex;
+
 #define MAX_CLIENT 10
 #define CHATDATA 1024
 #define INVALID_SOCK -1
 #define PORT 9000
-int    list_c[MAX_CLIENT];
+
+pthread_t thread_unity, thread_unity2, thread_ard;
+pthread_mutex_t mutex;
+
 char    escape[ ] = "exit";
 char    greeting[ ] = "now start\n";
 char    CODE200[ ] = "Sorry No More Connection\n";
+char	client_name[CHATDATA];
 
 
-char device[] = "/dev/ttyUSB0";
-char device2[] = "/dev/ttyUSB1";
-int fd, fd2;
-unsigned long baud = 9600;
+char read_device[] = "/dev/ttyUSB0";
+int read_fd;
+unsigned long read_baud = 9600;
+
+char handle_device[] = "/dev/ttyUSB1";
+int handle_fd;
+unsigned long handle_baud = 9600;
+
+
+
+
+
+struct inform_c
+{
+	int c_num;
+	char c_name[CHATDATA];
+};
+struct inform_c inform_c[MAX_CLIENT]; //구조체 배열 선언
 
 
 int main(int argc, char *argv[ ])
 {
+   
+    int count;
+    for(count=0; count<MAX_CLIENT; count++)
+    {
+	inform_c[count].c_num = INVALID_SOCK;
+    }//구조체 배열내의 c_socket 정보 초기화
+
+
     int c_socket, s_socket;
     struct sockaddr_in s_addr, c_addr;
     int    len;
@@ -56,87 +84,189 @@ int main(int argc, char *argv[ ])
         printf("listen Fail\n");
         return -1;
     }
-    for(i = 0; i < MAX_CLIENT; i++)
-        list_c[i] = INVALID_SOCK;
+
+
+
     while(1) {
         len = sizeof(c_addr);
         c_socket = accept(s_socket, (struct sockaddr *) &c_addr, &len);
-        res = pushClient(c_socket);
+	read(c_socket, client_name ,sizeof(client_name)); 
+	//클라이언트 접속과 동시에 클라이언트가 unity인지 라즈베리인지 판별하기위한 이름을 받아와 client_name 배열에 저장
+        res = pushClient(c_socket, client_name);
+	//클라이언트 정보 저장
+	printf("%d번째 접속자의 이름은 %s\n", res, inform_c[res].c_name);
 	
-	
-        if(res < 0) { //MAX_CLIENT만큼 이미 클라이언트가 접속해 있다면,
+        if(res < 0) { //허용 클라이언트 최대수를 초과한 경우
             write(c_socket, CODE200, strlen(CODE200));
             close(c_socket);
-        } else {
-            write(c_socket, greeting, strlen(greeting));
-            pthread_create(&thread_unity, NULL, do_unity, (void *)&c_socket);
+        } else { //평상시 실행될 부분
+
+		if( !strncmp(inform_c[res].c_name, "uni", 3) )
+		{    
+			pthread_create(&thread_unity, NULL, go_unity, (void *)&c_socket);
+			// 유니티로 센서값 보내는 쓰레드 시작
+			//pthread_create(&thread_unity2, NULL, come_unity, (void *)&c_socket);
+			// 유니티에서 오는 말 받는 쓰레드 시작 
+		}
+		else if( !strncmp(inform_c[res].c_name, "ras", 3) )
+		{
+			pthread_create(&thread_ard, NULL, go_ras, (void *)&c_socket);
+
+		} 
+            
         }
     }
 }
 
 
-void *do_unity(void *arg)
+
+void *go_ras(void *arg)
 {
-    int c_socket = *((int *)arg);
-    char chatData[CHATDATA];
-    int i, n;
-	int index=0, index2=0;
-	char midstr[1024], midstr2[1024];
+	int c_socket = *((int *)arg);
+	char chatData[CHATDATA];
+	int index=0;
+	char midstr[CHATDATA];
+	char *ptr;
+	int i, n;
+
+	
+
+	while(1)
+	{
+		read(c_socket, chatData, sizeof(chatData));
+		if(!strncmp(chatData, "quit", 4))
+		{
+			close(c_socket);
+		}
+		printf("%s\n", chatData);
+	}
+}
+
+void *go_unity(void *arg)
+{
+    	int c_socket = *((int *)arg);
+    	int i, n;
+	char chatData[CHATDATA], chatData2[CHATDATA];
+	char midstr, midstr2;
 	char *ptr;
 
-	fflush(stdout);
-	fd = serialOpen(device, baud);
-	fd2 = serialOpen(device2, baud);
+	char send_d[] = "0\t1\n";
+	
+	read_fd = serialOpen(read_device, read_baud);
+	handle_fd = serialOpen(handle_device, handle_baud);
 	wiringPiSetup();
 
-    while(1) {
-        memset(chatData, 0, sizeof(chatData));
-	
-	while(serialDataAvail(fd))
+    	while(1) 
 	{
 		
-		midstr[index] = serialGetchar(fd);
-		index = index + 1;
-		midstr2[index2] = serialGetchar(fd2);
-		index2 = index2 + 1;
 
-		fflush(stdout);
-		if( (ptr=strchr(midstr, '\n')) != NULL)
+        	memset(chatData, 0, sizeof(chatData));
+		
+		while(serialDataAvail(handle_fd)&&serialDataAvail(read_fd))
 		{
-			midstr[index]='\0';
-			midstr2[index2]='\0';
-			strcat(midstr, midstr2);
-			strcpy(chatData, midstr);
 			
+			
+			midstr = serialGetchar(read_fd);
+			midstr2 = serialGetchar(handle_fd);
+			sprintf(chatData, "%d\t%d\n", midstr, midstr2);
 			write(c_socket, chatData, strlen(chatData));
-			sprintf(chatData, "%s\r\n", chatData);			
-			printf("내가 입력한 말 : %s", chatData);
-
-			index=0;
-			index2=0;
-			memset(chatData, 0, sizeof(chatData));
-			memset(midstr, 0, sizeof(midstr));
-			memset(midstr2, 0, sizeof(midstr2));
+			//printf("data:%d %d\n", midstr, midstr2);
+		
+						
+			serialFlush(read_fd);
+			serialFlush(handle_fd);
 			
-			break;
+			//sprintf(chatData, "%d %d\n", midstr, midstr2);		
+			
+			//printf("보낸것: %d\n", chatData);
+
+			memset(chatData, 0, sizeof(chatData));
+
 			
 		}
+
+	}
+}
+
+
+void *come_unity(void *arg)
+{
+	int i;
+	int c_socket = *((int *)arg);
+	char comeData[CHATDATA];
+	memset(comeData, 0, sizeof(comeData));
+	static int retval = 999;
+	while(1)
+	{
+		read(c_socket, comeData, sizeof(comeData));
+		if(!strncmp(comeData, "quit", 4))
+		{
+			popClient(c_socket);
+			
+		}
+		else
+		{
+			for(i=0; i<MAX_CLIENT; i++)
+			{
+				if(inform_c[i].c_num == c_socket)
+				{
+					printf("%d번째 클라이언트의 말 : %s\n", i, comeData);
+					break;
+				}
+			}
+		}
+		memset(comeData, 0, sizeof(comeData));
+	}
+	
+	
+}
+
+
+int pushClient(int c_socket, char *name) {
+	int i;
+	int max_num;
+	for(i=0; i<MAX_CLIENT; i++)
+	{
+		pthread_mutex_lock(&mutex);
+		if(inform_c[i].c_num == INVALID_SOCK)
+		{
+			inform_c[i].c_num = c_socket;
+			strcpy(inform_c[i].c_name, name);
+			max_num = i;
+			break;
+		}
+		pthread_mutex_unlock(&mutex);
 	}
 
-    }
+	if(max_num==MAX_CLIENT)
+	{
+		return -1;
+	}
+	else
+	{
+		i=0;
+		return max_num;
+	}
 }
 
-int pushClient(int c_socket) {
-    //ADD c_socket to list_c array.
-    //
-    ///////////////////////////////
-    //return -1, if list_c is full.
-    //return the index of list_c which c_socket is added.
-}
 int popClient(int c_socket)
 {
-    close(c_socket);
-    //REMOVE c_socket from list_c array.
-    //
-    ///////////////////////////////////
+	int i;
+	close(c_socket);
+	
+	for(i=0; i<MAX_CLIENT; i++)
+	{
+		pthread_mutex_lock(&mutex);
+		if(inform_c[i].c_num == c_socket)
+		{
+			inform_c[i].c_num = INVALID_SOCK;
+			printf("%d번째 클라 접속종료\n", i);
+			pthread_mutex_unlock(&mutex);
+			break;
+		}
+		pthread_mutex_unlock(&mutex);
+	}
+	
 }
+
+
