@@ -10,10 +10,13 @@
 #include <wiringPi.h>
 #include <wiringSerial.h>
 
-void *go_unity(void *); //채팅 메세지를 보내는 함수
+//void *go_unity(void *); //채팅 메세지를 보내는 함수
 void *come_unity(void *); //채팅 메세지를 받는 함수
 void *go_ras(void *); //채팅 메세지를 받는 함수
 void *go_ras2(void *); //채팅 메세지를 받는 함수
+void *go_read(void *);
+void *go_handle(void *);
+void *go_break(void *);
 
 int pushClient(int, char*); //새로운 클라이언트가 접속했을 때 클라이언트 정보 추가
 int popClient(int); //클라이언트가 종료했을 때 클라이언트 정보 삭제
@@ -24,6 +27,7 @@ int popClient(int); //클라이언트가 종료했을 때 클라이언트 정보
 #define PORT 9000
 
 pthread_t thread_unity, thread_unity2, thread_ard;
+pthread_t thread_read, thread_handle, thread_break;
 pthread_mutex_t mutex;
 
 char    escape[ ] = "exit";
@@ -40,6 +44,12 @@ char handle_device[] = "/dev/ttyUSB1";
 int handle_fd;
 unsigned long handle_baud = 9600;
 
+char break_device[] = "/dev/ttyUSB2";
+int break_fd;
+unsigned long break_baud = 9600;
+
+char midstr, midstr2, midstr3, midstr4;
+
 
 
 
@@ -52,7 +62,7 @@ struct inform_c
 struct inform_c inform_c[MAX_CLIENT]; //구조체 배열 선언
 
 
-int main(int argc, char *argv[ ])
+int main(int argc, char *argv[ ])this.distance_txt = GameObject.Find("distance");
 {
    
     int count;
@@ -103,10 +113,14 @@ int main(int argc, char *argv[ ])
 
 		if( !strncmp(inform_c[res].c_name, "uni", 3) )
 		{    
-			pthread_create(&thread_unity, NULL, go_unity, (void *)&c_socket);
+			//pthread_create(&thread_unity, NULL, go_unity, (void *)&c_socket);
 			// 유니티로 센서값 보내는 쓰레드 시작
 			//pthread_create(&thread_unity2, NULL, come_unity, (void *)&c_socket);
 			// 유니티에서 오는 말 받는 쓰레드 시작 
+
+			pthread_create(&thread_read, NULL, go_read, (void *)&c_socket);
+			pthread_create(&thread_handle, NULL, go_handle, (void *)&c_socket);
+			pthread_create(&thread_break, NULL, go_break, (void *)&c_socket);
 		}
 		else if( !strncmp(inform_c[res].c_name, "ras", 3) )
 		{
@@ -118,6 +132,65 @@ int main(int argc, char *argv[ ])
     }
 }
 
+void *go_read(void *arg)
+{
+	int c_socket = *((int *)arg);
+	char chatData[CHATDATA];
+	read_fd = serialOpen(read_device, read_baud);
+	wiringPiSetup();
+	while(1)
+	{
+		while(serialDataAvail(read_fd))
+		{
+			midstr = serialGetchar(read_fd);
+			printf("바퀴:%d\n",midstr);
+			sprintf(chatData,"read\t%d\n",midstr);
+			write(c_socket, chatData, strlen(chatData));
+			serialFlush(read_fd);
+		}
+	}
+}
+
+void *go_handle(void *arg)
+{
+	int c_socket = *((int *)arg);
+	char chatData[CHATDATA];
+	handle_fd = serialOpen(handle_device, handle_baud);
+	wiringPiSetup();
+	while(1)
+	{
+		while(serialDataAvail(handle_fd))
+		{
+			midstr2 = serialGetchar(handle_fd);
+			int re = (int)midstr2;
+			re = re - 100;
+			float re2 = (float)re / 100;
+			printf("핸들:%.2f\n",re2);
+			sprintf(chatData,"handle\t%.2f\n",re2);
+			write(c_socket,chatData,strlen(chatData));
+			serialFlush(handle_fd);
+		}
+	}
+}
+
+void *go_break(void *arg)
+{
+	int c_socket = *((int *)arg);
+	char chatData[CHATDATA];
+	break_fd = serialOpen(break_device, break_baud);
+	wiringPiSetup();
+	while(1)
+	{
+		while(serialDataAvail(break_fd))
+		{
+			midstr3 = serialGetchar(break_fd);
+			printf("브레이크%d\n",midstr3);
+			sprintf(chatData, "break\t%d\n", midstr3);
+			write(c_socket, chatData, strlen(chatData));
+			serialFlush(break_fd);
+		}
+	}
+}
 
 
 void *go_ras(void *arg)
@@ -142,6 +215,7 @@ void *go_ras(void *arg)
 	}
 }
 
+/*
 void *go_unity(void *arg)
 {
     	int c_socket = *((int *)arg);
@@ -151,10 +225,13 @@ void *go_unity(void *arg)
 	char *ptr;
 
 	char send_d[] = "0\t1\n";
+
+	int old_read = 0;
+	int new_read = 0;
 	
-	read_fd = serialOpen(read_device, read_baud);
-	handle_fd = serialOpen(handle_device, handle_baud);
-	wiringPiSetup();
+	//read_fd = serialOpen(read_device, read_baud);
+	//handle_fd = serialOpen(handle_device, handle_baud);
+	//wiringPiSetup();
 
     	while(1) 
 	{
@@ -166,19 +243,24 @@ void *go_unity(void *arg)
 		{
 			
 			
-			midstr = serialGetchar(read_fd);
-			midstr2 = serialGetchar(handle_fd);
-			sprintf(chatData, "%d\t%d\n", midstr, midstr2);
-			write(c_socket, chatData, strlen(chatData));
+			//midstr = serialGetchar(read_fd);
+			//midstr2 = serialGetchar(handle_fd);
+			//int re = (int)midstr2;
+			//re = re - 100;
+			//float re2 = (float)re / 100;
+			//sprintf(chatData, "%d\t%.2f\n", midstr, midstr2);
+			//write(c_socket, chatData, strlen(chatData));
 			//printf("data:%d %d\n", midstr, midstr2);
 		
-						
-			serialFlush(read_fd);
-			serialFlush(handle_fd);
+			//printf("보낸것: %d\n", chatData);	
+			//printf("바퀴 : %d\n", new_read);
+			//printf("핸들 : %.2f\n",re2);		
+			//serialFlush(read_fd);
+			//serialFlush(handle_fd);
 			
 			//sprintf(chatData, "%d %d\n", midstr, midstr2);		
 			
-			//printf("보낸것: %d\n", chatData);
+			
 
 			memset(chatData, 0, sizeof(chatData));
 
@@ -187,7 +269,7 @@ void *go_unity(void *arg)
 
 	}
 }
-
+*/
 
 void *come_unity(void *arg)
 {
