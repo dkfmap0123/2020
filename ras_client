@@ -1,0 +1,80 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/select.h>
+#include <pthread.h>
+#include <signal.h>
+
+#define CHATDATA 1024
+#define SERVER_IP "192.168.0.180"
+#define PORT 9000
+
+void *do_back(void *);
+void *go_read(void *);
+
+char read_device[] = "/dev/ttyUSB0";
+int read_fd;
+unsigned long read_baud = 9600;
+
+char escape[] = "exit";
+
+char my_nick[] = "ras";
+
+pthread_t thread_go;
+pthread_mutex_t mutex;
+
+int main(int argc, char *argv[])
+{
+	int result;
+	int c_socket;
+	struct sockaddr_in c_addr;
+	int len;
+	char chatData[CHATDATA];
+	char buf[CHATDATA];
+	int nfds;
+	fd_set read_fds;
+	int n;
+	c_socket = socket(PF_INET, SOCK_STREAM, 0);
+	memset(&c_addr, 0, sizeof(c_addr));
+	c_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
+	c_addr.sin_family = AF_INET;
+	c_addr.sin_port = htons(PORT);
+
+	
+	if(connect(c_socket, (struct sockaddr *) &c_addr, sizeof(c_addr)) == -1)
+	{
+		printf("Can not connect\n");
+		return -1;
+	}
+	write(c_socket, my_nick, strlen(my_nick));
+	pthread_create(&thread_go, NULL, go_read, (void *)&c_socket);
+	pthread_join(thread_go, (void *)&result);
+}
+
+
+void *go_read(void *arg)
+{
+	int c_socket = *((int *)arg);
+	char chatData[CHATDATA];
+	/*read_fd = serialOpen(read_device, read_baud);
+	wiringPiSetup();*/
+	int i=0;
+	while(1)
+	{
+		/*
+		while(serialDataAvail(read_fd))
+		{
+			midstr = serialGetchar(read_fd);
+			printf("바퀴:%d\n",midstr);
+			sprintf(chatData,"read\t%d\n",midstr);
+			write(c_socket, chatData, strlen(chatData));
+			serialFlush(read_fd);
+		}*/
+		write(c_socket, "hello", 5);
+		
+
+	}
+}
