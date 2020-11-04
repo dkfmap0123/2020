@@ -11,12 +11,13 @@
 #include <wiringSerial.h>
 
 //void *go_unity(void *); //채팅 메세지를 보내는 함수
-void *come_unity(void *); //채팅 메세지를 받는 함수
+void *come_back(void *); //채팅 메세지를 받는 함수
 void *go_ras(void *); //채팅 메세지를 받는 함수
 void *go_ras2(void *); //채팅 메세지를 받는 함수
-void *go_read(void *);
+
 void *go_handle(void *);
 void *go_break(void *);
+void *go_heart(void *);
 
 int pushClient(int, char*); //새로운 클라이언트가 접속했을 때 클라이언트 정보 추가
 int popClient(int); //클라이언트가 종료했을 때 클라이언트 정보 삭제
@@ -26,8 +27,8 @@ int popClient(int); //클라이언트가 종료했을 때 클라이언트 정보
 #define INVALID_SOCK -1
 #define PORT 9000
 
-pthread_t thread_unity, thread_unity2, thread_ard;
-pthread_t thread_read, thread_handle, thread_break;
+pthread_t thread_unity, thread_back, thread_ard;
+pthread_t thread_handle, thread_break, thread_heart;
 pthread_mutex_t mutex;
 
 char    escape[ ] = "exit";
@@ -36,9 +37,7 @@ char    CODE200[ ] = "Sorry No More Connection\n";
 char	client_name[CHATDATA];
 
 
-char read_device[] = "/dev/ttyUSB0";
-int read_fd;
-unsigned long read_baud = 9600;
+
 
 char handle_device[] = "/dev/ttyUSB1";
 int handle_fd;
@@ -47,6 +46,10 @@ unsigned long handle_baud = 9600;
 char break_device[] = "/dev/ttyUSB2";
 int break_fd;
 unsigned long break_baud = 9600;
+
+char heart_device[] = "/dev/ttyUSB0";
+int heart_fd;
+unsigned long heart_baud = 9600;
 
 char midstr, midstr2, midstr3, midstr4;
 
@@ -62,7 +65,7 @@ struct inform_c
 struct inform_c inform_c[MAX_CLIENT]; //구조체 배열 선언
 
 
-int main(int argc, char *argv[ ])this.distance_txt = GameObject.Find("distance");
+int main(int argc, char *argv[ ])
 {
    
     int count;
@@ -115,16 +118,18 @@ int main(int argc, char *argv[ ])this.distance_txt = GameObject.Find("distance")
 		{    
 			//pthread_create(&thread_unity, NULL, go_unity, (void *)&c_socket);
 			// 유니티로 센서값 보내는 쓰레드 시작
-			//pthread_create(&thread_unity2, NULL, come_unity, (void *)&c_socket);
-			// 유니티에서 오는 말 받는 쓰레드 시작 
+			
+			
 
-			pthread_create(&thread_read, NULL, go_read, (void *)&c_socket);
-			pthread_create(&thread_handle, NULL, go_handle, (void *)&c_socket);
-			pthread_create(&thread_break, NULL, go_break, (void *)&c_socket);
+			
+			//pthread_create(&thread_handle, NULL, go_handle, (void *)&c_socket);
+			//pthread_create(&thread_break, NULL, go_break, (void *)&c_socket);
+			//pthread_create(&thread_heart, NULL, go_heart, (void *)&c_socket);
 		}
 		else if( !strncmp(inform_c[res].c_name, "ras", 3) )
 		{
-			pthread_create(&thread_ard, NULL, go_ras, (void *)&c_socket);
+			//pthread_create(&thread_ard, NULL, go_ras, (void *)&c_socket);
+			pthread_create(&thread_back, NULL, come_back, (void *)&c_socket);
 
 		} 
             
@@ -132,24 +137,6 @@ int main(int argc, char *argv[ ])this.distance_txt = GameObject.Find("distance")
     }
 }
 
-void *go_read(void *arg)
-{
-	int c_socket = *((int *)arg);
-	char chatData[CHATDATA];
-	read_fd = serialOpen(read_device, read_baud);
-	wiringPiSetup();
-	while(1)
-	{
-		while(serialDataAvail(read_fd))
-		{
-			midstr = serialGetchar(read_fd);
-			printf("바퀴:%d\n",midstr);
-			sprintf(chatData,"read\t%d\n",midstr);
-			write(c_socket, chatData, strlen(chatData));
-			serialFlush(read_fd);
-		}
-	}
-}
 
 void *go_handle(void *arg)
 {
@@ -192,6 +179,24 @@ void *go_break(void *arg)
 	}
 }
 
+void *go_heart(void *arg)
+{
+	int c_socket = *((int *)arg);
+	char chatData[CHATDATA];
+	heart_fd = serialOpen(heart_device, heart_baud);
+	wiringPiSetup();
+	while(1)
+	{
+		while(serialDataAvail(heart_fd))
+		{
+			midstr3 = serialGetchar(heart_fd);
+			printf("심박:%d\n",midstr4);
+			sprintf(chatData, "heart\t%d\n", midstr4);
+			write(c_socket, chatData, strlen(chatData));
+			serialFlush(heart_fd);
+		}
+	}
+}
 
 void *go_ras(void *arg)
 {
@@ -271,7 +276,7 @@ void *go_unity(void *arg)
 }
 */
 
-void *come_unity(void *arg)
+void *come_back(void *arg)
 {
 	int i;
 	int c_socket = *((int *)arg);
@@ -281,23 +286,9 @@ void *come_unity(void *arg)
 	while(1)
 	{
 		read(c_socket, comeData, sizeof(comeData));
-		if(!strncmp(comeData, "quit", 4))
-		{
-			popClient(c_socket);
-			
-		}
-		else
-		{
-			for(i=0; i<MAX_CLIENT; i++)
-			{
-				if(inform_c[i].c_num == c_socket)
-				{
-					printf("%d번째 클라이언트의 말 : %s\n", i, comeData);
-					break;
-				}
-			}
-		}
+		printf("%s\n", comeData);
 		memset(comeData, 0, sizeof(comeData));
+		
 	}
 	
 	
@@ -350,5 +341,4 @@ int popClient(int c_socket)
 	}
 	
 }
-
 
