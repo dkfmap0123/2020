@@ -10,6 +10,13 @@
 #include <wiringPi.h>
 #include <wiringSerial.h>
 
+#define MAX_CLIENT 10
+#define CHATDATA 1024
+#define INVALID_SOCK -1
+#define PORT 9000
+
+
+
 //void *go_unity(void *); //채팅 메세지를 보내는 함수
 void *come_back(void *); //채팅 메세지를 받는 함수
 void *go_ras(void *); //채팅 메세지를 받는 함수
@@ -22,10 +29,7 @@ void *go_heart(void *);
 int pushClient(int, char*); //새로운 클라이언트가 접속했을 때 클라이언트 정보 추가
 int popClient(int); //클라이언트가 종료했을 때 클라이언트 정보 삭제
 
-#define MAX_CLIENT 10
-#define CHATDATA 1024
-#define INVALID_SOCK -1
-#define PORT 9000
+
 
 pthread_t thread_unity, thread_back, thread_ard;
 pthread_t thread_handle, thread_break, thread_heart;
@@ -68,7 +72,7 @@ struct inform_c inform_c[MAX_CLIENT]; //구조체 배열 선언
 int main(int argc, char *argv[ ])
 {
    
-    int count;
+    int count; 
     for(count=0; count<MAX_CLIENT; count++)
     {
 	inform_c[count].c_num = INVALID_SOCK;
@@ -116,6 +120,15 @@ int main(int argc, char *argv[ ])
 
 		if( !strncmp(inform_c[res].c_name, "uni", 3) )
 		{    
+			
+			
+		}
+		else if( !strncmp(inform_c[res].c_name, "ras", 3) )
+		{
+			
+			
+		}
+
 			//pthread_create(&thread_unity, NULL, go_unity, (void *)&c_socket);
 			// 유니티로 센서값 보내는 쓰레드 시작
 			
@@ -124,14 +137,10 @@ int main(int argc, char *argv[ ])
 			
 			//pthread_create(&thread_handle, NULL, go_handle, (void *)&c_socket);
 			//pthread_create(&thread_break, NULL, go_break, (void *)&c_socket);
-			//pthread_create(&thread_heart, NULL, go_heart, (void *)&c_socket);
-		}
-		else if( !strncmp(inform_c[res].c_name, "ras", 3) )
-		{
+			//pthread_create(&thread_heart, NULL, go_heart, (void *)&c_socket); 
+
 			//pthread_create(&thread_ard, NULL, go_ras, (void *)&c_socket);
 			pthread_create(&thread_back, NULL, come_back, (void *)&c_socket);
-
-		} 
             
         }
     }
@@ -220,74 +229,40 @@ void *go_ras(void *arg)
 	}
 }
 
-/*
-void *go_unity(void *arg)
-{
-    	int c_socket = *((int *)arg);
-    	int i, n;
-	char chatData[CHATDATA], chatData2[CHATDATA];
-	char midstr, midstr2;
-	char *ptr;
 
-	char send_d[] = "0\t1\n";
-
-	int old_read = 0;
-	int new_read = 0;
-	
-	//read_fd = serialOpen(read_device, read_baud);
-	//handle_fd = serialOpen(handle_device, handle_baud);
-	//wiringPiSetup();
-
-    	while(1) 
-	{
-		
-
-        	memset(chatData, 0, sizeof(chatData));
-		
-		while(serialDataAvail(handle_fd)&&serialDataAvail(read_fd))
-		{
-			
-			
-			//midstr = serialGetchar(read_fd);
-			//midstr2 = serialGetchar(handle_fd);
-			//int re = (int)midstr2;
-			//re = re - 100;
-			//float re2 = (float)re / 100;
-			//sprintf(chatData, "%d\t%.2f\n", midstr, midstr2);
-			//write(c_socket, chatData, strlen(chatData));
-			//printf("data:%d %d\n", midstr, midstr2);
-		
-			//printf("보낸것: %d\n", chatData);	
-			//printf("바퀴 : %d\n", new_read);
-			//printf("핸들 : %.2f\n",re2);		
-			//serialFlush(read_fd);
-			//serialFlush(handle_fd);
-			
-			//sprintf(chatData, "%d %d\n", midstr, midstr2);		
-			
-			
-
-			memset(chatData, 0, sizeof(chatData));
-
-			
-		}
-
-	}
-}
-*/
 
 void *come_back(void *arg)
 {
 	int i;
 	int c_socket = *((int *)arg);
 	char comeData[CHATDATA];
+	char chatData[CHATDATA];
 	memset(comeData, 0, sizeof(comeData));
+	memset(chatData, 0, sizeof(chatData));
 	static int retval = 999;
 	while(1)
 	{
-		read(c_socket, comeData, sizeof(comeData));
-		printf("%s\n", comeData);
+		
+		
+		
+		
+		for(i=0; i<MAX_CLIENT; i++)
+		{
+			if(!strncmp(inform_c[i].c_name, "ras", 3))
+			{
+				read(inform_c[i].c_num, comeData, sizeof(comeData));
+				printf("ras : %s", comeData);
+				sprintf(chatData, "read\t%s", comeData);
+			}
+			else if(!strncmp(inform_c[i].c_name, "uni", 3))
+			{
+				write(inform_c[i].c_num, chatData, strlen(chatData));
+			}
+			
+		}
+		
 		memset(comeData, 0, sizeof(comeData));
+		memset(chatData, 0, sizeof(chatData));
 		
 	}
 	
@@ -306,6 +281,7 @@ int pushClient(int c_socket, char *name) {
 			inform_c[i].c_num = c_socket;
 			strcpy(inform_c[i].c_name, name);
 			max_num = i;
+			pthread_mutex_unlock(&mutex);
 			break;
 		}
 		pthread_mutex_unlock(&mutex);
