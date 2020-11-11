@@ -7,6 +7,11 @@
 #include <sys/select.h>
 #include <pthread.h>
 #include <signal.h>
+#include <errno.h>
+#include <wiringPi.h>
+#include <wiringSerial.h>
+#include <stdint.h>
+#include <signal.h>
 
 #define CHATDATA 1024
 #define SERVER_IP "192.168.0.180"
@@ -14,6 +19,11 @@
 
 void *do_back(void *);
 void *go_read(void *);
+void (*old_sig)(int);
+void go_quit(int);
+
+
+pthread_mutex_t mutex;
 
 char read_device[] = "/dev/ttyUSB0";
 int read_fd;
@@ -26,6 +36,8 @@ char my_nick[] = "ras";
 pthread_t thread_go;
 pthread_mutex_t mutex;
 
+int socket_num;
+
 int main(int argc, char *argv[])
 {
 	int result;
@@ -37,7 +49,22 @@ int main(int argc, char *argv[])
 	int nfds;
 	fd_set read_fds;
 	int n;
+	if(pthread_mutex_init(&mutex, NULL) != 0)
+	{
+		printf("Can not mutex\n");
+		return -1;
+	}
+
+
+	
+
+
 	c_socket = socket(PF_INET, SOCK_STREAM, 0);
+
+	pthread_mutex_lock(&mutex);
+	socket_num = c_socket;
+	pthread_mutex_unlock(&mutex);
+
 	memset(&c_addr, 0, sizeof(c_addr));
 	c_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
 	c_addr.sin_family = AF_INET;
@@ -50,8 +77,12 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 	write(c_socket, my_nick, strlen(my_nick));
+
+	old_sig = signal(SIGINT, go_quit);
+	
 	pthread_create(&thread_go, NULL, go_read, (void *)&c_socket);
 	pthread_join(thread_go, (void *)&result);
+	
 }
 
 
@@ -59,22 +90,50 @@ void *go_read(void *arg)
 {
 	int c_socket = *((int *)arg);
 	char chatData[CHATDATA];
-	/*read_fd = serialOpen(read_device, read_baud);
-	wiringPiSetup();*/
+	char midstr;
+	read_fd = serialOpen(read_device, read_baud);
+	wiringPiSetup();
 	int i=0;
 	while(1)
 	{
-		/*
+		
 		while(serialDataAvail(read_fd))
 		{
 			midstr = serialGetchar(read_fd);
-			printf("바퀴:%d\n",midstr);
-			sprintf(chatData,"read\t%d\n",midstr);
-			write(c_socket, chatData, strlen(chatData));
+			//printf("%d\n",midstr);
+			sprintf(chatData,"%d",midstr);
+
+			for(i=0; i<100; i++)
+			{
+				char chacha[CHATDATA];
+				sprintf(chacha, "%da\n", i);
+				printf("%s\n", chacha);
+				write(c_socket, chacha, strlen(chacha));
+				sleep(1);
+				
+			}
+			//write(c_socket, chatData, strlen(chatData));
+			memset(chatData, 0, sizeof(chatData));
 			serialFlush(read_fd);
-		}*/
-		write(c_socket, "hello", 5);
+		}
+		//write(c_socket, "hello", 5);
 		
 
 	}
 }
+
+void go_quit(int signo)
+{
+	
+	printf("ctrl-c key\n");
+	printf("write to server quit\n");
+	pthread_mutex_lock(&mutex);
+	write(socket_num, "quit", 4);
+	pthread_mutex_unlock(&mutex);
+	//pthread_cancel(thread_go);
+	
+
+	printf("one more quit\n");
+	signal(SIGINT, old_sig);
+}
+
