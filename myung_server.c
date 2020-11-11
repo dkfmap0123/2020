@@ -164,8 +164,17 @@ void *go_handle(void *arg)
 	int c_socket = *((int *)arg);
 	char chatData[CHATDATA];
 
-	
-
+	int check;
+	for(check=0; check<MAX_CLIENT; check++)
+	{
+		if(inform_c[check].c_num == c_socket)
+		{
+			pthread_mutex_lock(&mutex);
+			inform_c[check].handle_thread = thread_handle;
+			pthread_mutex_unlock(&mutex);
+		}
+		
+	}
 
 	int i;
 	handle_fd = serialOpen(handle_device, handle_baud);
@@ -391,6 +400,7 @@ int popClient(int c_socket)
 		{
 			inform_c[i].c_num = INVALID_SOCK;
 			printf("%d번째 클라 접속종료\n", i);
+			pthread_cancel(inform_c[i].handle_thread);
 			pthread_mutex_unlock(&mutex);
 			break;
 			
